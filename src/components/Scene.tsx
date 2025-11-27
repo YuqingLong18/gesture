@@ -4,8 +4,8 @@ import PointCloud from './PointCloud';
 
 const Scene = () => {
   return (
-    <div className="w-full h-screen bg-black">
-      <Canvas camera={{ position: [0, 0, 5], fov: 60 }}>
+    <div className="absolute inset-0 w-full h-full bg-black" style={{ width: '100vw', height: '100vh' }}>
+      <Canvas camera={{ position: [0, 0, 20], fov: 75 }} style={{ width: '100%', height: '100%' }}>
         <color attach="background" args={['#000000']} />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} />

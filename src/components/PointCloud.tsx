@@ -6,13 +6,18 @@ import { useGestureStore } from '../store';
 const PointCloud = () => {
     const pointsRef = useRef<THREE.Points>(null);
 
-    const particlesCount = 5000;
+    const particlesCount = 10000;
     const positions = useMemo(() => {
         const positions = new Float32Array(particlesCount * 3);
-        for (let i = 0; i < particlesCount; i++) {
+
+        // Planet particles (Sphere) - 70% of particles
+        const planetParticles = Math.floor(particlesCount * 0.7);
+        const planetRadius = 8;
+
+        for (let i = 0; i < planetParticles; i++) {
             const theta = THREE.MathUtils.randFloatSpread(360);
             const phi = THREE.MathUtils.randFloatSpread(360);
-            const r = 2 + Math.random() * 2; // Radius between 2 and 4
+            const r = planetRadius;
 
             const x = r * Math.sin(theta) * Math.cos(phi);
             const y = r * Math.sin(theta) * Math.sin(phi);
@@ -22,10 +27,29 @@ const PointCloud = () => {
             positions[i * 3 + 1] = y;
             positions[i * 3 + 2] = z;
         }
+
+        // Ring particles (Disc) - 30% of particles
+        const ringInnerRadius = 10;
+        const ringOuterRadius = 15;
+
+        for (let i = planetParticles; i < particlesCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            // Distribute particles in the ring area
+            const r = Math.sqrt(Math.random() * (ringOuterRadius ** 2 - ringInnerRadius ** 2) + ringInnerRadius ** 2);
+
+            const x = r * Math.cos(angle);
+            const z = r * Math.sin(angle);
+            const y = (Math.random() - 0.5) * 0.2; // Slight thickness
+
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+        }
+
         return positions;
     }, []);
 
-    useFrame((_state, delta) => {
+    useFrame((_state, _delta) => {
         const { rotation, scale, position } = useGestureStore.getState();
 
         if (pointsRef.current) {
@@ -37,8 +61,7 @@ const PointCloud = () => {
 
             pointsRef.current.position.lerp(new THREE.Vector3(position.x, position.y, position.z), 0.1);
 
-            // Idle rotation
-            pointsRef.current.rotation.y += delta * 0.05;
+
         }
     });
 
@@ -54,7 +77,7 @@ const PointCloud = () => {
                 />
             </bufferGeometry>
             <pointsMaterial
-                size={0.05}
+                size={0.15}
                 color="#00ffff"
                 sizeAttenuation={true}
                 transparent={true}

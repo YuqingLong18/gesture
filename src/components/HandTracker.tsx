@@ -58,15 +58,34 @@ const HandTracker = () => {
                 const scale = Math.max(0.5, Math.min(3, distance * 10));
                 setScale(scale);
 
-                // 3. Rotation (Wrist to Middle Finger MCP)
-                // This is a bit simplified.
+                // 3. Rotation
                 const wrist = landmarks[0];
                 const middleMcp = landmarks[9];
-                const dx = middleMcp.x - wrist.x;
-                const dy = middleMcp.y - wrist.y;
-                const rotationZ = Math.atan2(dy, dx);
-                // We can map this to rotation
-                setRotation(0, -rotationZ); // Invert for mirror effect
+                const indexMcp = landmarks[5];
+                const pinkyMcp = landmarks[17];
+
+                // Pitch (X-axis): Tilt forward/backward
+                // Vector from Wrist to Middle MCP
+                const handDirY = {
+                    y: middleMcp.y - wrist.y,
+                    z: middleMcp.z - wrist.z
+                };
+                // When hand is vertical (fingers up), y is negative, z is 0.
+                // We want this to be 0 rotation.
+                // Invert pitch so that tilting hand forward (fingers to camera) results in positive X rotation (top to viewer).
+                const pitch = -Math.atan2(handDirY.z, -handDirY.y);
+
+                // Yaw (Y-axis): Turn left/right
+                // Vector from Index MCP to Pinky MCP
+                const handDirX = {
+                    x: pinkyMcp.x - indexMcp.x,
+                    z: pinkyMcp.z - indexMcp.z
+                };
+                // When hand is flat facing camera, x is positive (Right hand), z is 0.
+                const yaw = Math.atan2(handDirX.z, handDirX.x);
+
+                // Apply rotation (multiply by 2 for better sensitivity)
+                setRotation(pitch * 2, yaw * 2);
             }
 
             requestAnimationFrame(() => predictWebcam(handLandmarker));
@@ -74,13 +93,12 @@ const HandTracker = () => {
     };
 
     return (
-        <div className="absolute top-0 left-0 z-10 p-4">
+        <div style={{ display: 'none', visibility: 'hidden', width: 0, height: 0, overflow: 'hidden' }}>
             <video
                 ref={videoRef}
                 autoPlay
                 playsInline
-                className="w-32 h-24 border border-white opacity-50 rounded-lg"
-                style={{ transform: 'scaleX(-1)' }}
+                style={{ display: 'none', visibility: 'hidden', width: 0, height: 0, transform: 'scaleX(-1)' }}
             />
         </div>
     );
