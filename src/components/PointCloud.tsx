@@ -3,17 +3,48 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGestureStore } from '../store';
 
+const vertexShader = `
+  attribute float size;
+  attribute vec3 color;
+  varying vec3 vColor;
+  void main() {
+    vColor = color;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (300.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const fragmentShader = `
+  varying vec3 vColor;
+  void main() {
+    float r = distance(gl_PointCoord, vec2(0.5, 0.5));
+    if (r > 0.5) discard;
+    
+    // Soft edge / glow
+    float glow = 1.0 - (r * 2.0);
+    glow = pow(glow, 1.5); 
+
+    gl_FragColor = vec4(vColor, glow);
+  }
+`;
+
 const PointCloud = () => {
     const pointsRef = useRef<THREE.Points>(null);
 
-    const particlesCount = 10000;
+    const particlesCount = 30000;
     const shape = useGestureStore((state) => state.shape);
 
-    const positions = useMemo(() => {
+    const { positions, colors, sizes } = useMemo(() => {
         const positions = new Float32Array(particlesCount * 3);
+        const colors = new Float32Array(particlesCount * 3);
+        const sizes = new Float32Array(particlesCount);
+
+        const color1 = new THREE.Color('#00ffff'); // Cyan
+        const color2 = new THREE.Color('#8a2be2'); // BlueViolet
+        const color3 = new THREE.Color('#ff00ff'); // Magenta
 
         const generateRing = () => {
-            // Planet particles (Sphere) - 70% of particles
             const planetParticles = Math.floor(particlesCount * 0.7);
             const planetRadius = 8;
 
@@ -29,64 +60,69 @@ const PointCloud = () => {
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
+
+                // Color based on position
+                const mixedColor = color1.clone().lerp(color2, Math.abs(y) / r);
+                colors[i * 3] = mixedColor.r;
+                colors[i * 3 + 1] = mixedColor.g;
+                colors[i * 3 + 2] = mixedColor.b;
+
+                sizes[i] = Math.random() * 0.5 + 0.1;
             }
 
-            // Ring particles (Disc) - 30% of particles
             const ringInnerRadius = 10;
             const ringOuterRadius = 15;
 
             for (let i = planetParticles; i < particlesCount; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                // Distribute particles in the ring area
                 const r = Math.sqrt(Math.random() * (ringOuterRadius ** 2 - ringInnerRadius ** 2) + ringInnerRadius ** 2);
 
                 const x = r * Math.cos(angle);
                 const z = r * Math.sin(angle);
-                const y = (Math.random() - 0.5) * 0.2; // Slight thickness
+                const y = (Math.random() - 0.5) * 0.5;
 
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
+
+                const mixedColor = color2.clone().lerp(color3, (r - ringInnerRadius) / (ringOuterRadius - ringInnerRadius));
+                colors[i * 3] = mixedColor.r;
+                colors[i * 3 + 1] = mixedColor.g;
+                colors[i * 3 + 2] = mixedColor.b;
+
+                sizes[i] = Math.random() * 0.4 + 0.1;
             }
         };
 
         const generateHeart = () => {
             for (let i = 0; i < particlesCount; i++) {
-                // Heart formula
-                // x = 16sin^3(t)
-                // y = 13cos(t) - 5cos(2t) - 2cos(3t) - cos(4t)
-                // z = varies to give depth
-
-                // We need to distribute points inside the volume
-                // A simple way is rejection sampling or just surface + noise
-
-                // Let's do a 3D heart approximation
                 const t = Math.random() * Math.PI * 2;
-                // const u = Math.random() * Math.PI; // Unused
-
-                // Base 2D heart shape
                 const xBase = 16 * Math.pow(Math.sin(t), 3);
                 const yBase = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-
-                // Add thickness based on u
-                const scale = 0.5; // Scale down to fit scene
-
-                // Randomize slightly for volume
+                const scale = 0.5;
                 const r = Math.random();
-                const vol = Math.pow(r, 1 / 3); // Cube root for uniform distribution in sphere-like volume, approx here
+                const vol = Math.pow(r, 1 / 3);
 
                 const x = xBase * scale * vol;
                 const y = yBase * scale * vol;
-                const z = (Math.random() - 0.5) * 6 * vol; // Arbitrary Z thickness
+                const z = (Math.random() - 0.5) * 6 * vol;
 
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
+
+                const dist = Math.sqrt(x * x + y * y + z * z);
+                const mixedColor = color3.clone().lerp(color1, dist / 10);
+
+                colors[i * 3] = mixedColor.r;
+                colors[i * 3 + 1] = mixedColor.g;
+                colors[i * 3 + 2] = mixedColor.b;
+
+                sizes[i] = Math.random() * 0.5 + 0.2;
             }
         };
 
         const generatePolyhedron = (type: 'octahedron' | 'icosahedron') => {
-            // Create a temporary geometry to sample points from
             let geometry;
             if (type === 'octahedron') {
                 geometry = new THREE.OctahedronGeometry(10, 0);
@@ -94,36 +130,11 @@ const PointCloud = () => {
                 geometry = new THREE.IcosahedronGeometry(10, 0);
             }
 
-            // We need to sample points from the surface or volume.
-            // Since we can't easily use MeshSurfaceSampler without importing it from examples,
-            // we will use a simpler approach: vertices + random points on faces?
-            // Or just random points in a sphere and project them?
-            // Actually, for a cool effect, let's just use the vertices and subdivide or just random points on the faces.
-
-            // Let's try a simple approach: Random points in a sphere, but normalize them to the polyhedron surface?
-            // Hard to do exact polyhedron without the geometry data.
-            // Let's use the geometry vertices and interpolate.
-
             const posAttribute = geometry.attributes.position;
             const vertexCount = posAttribute.count;
 
             for (let i = 0; i < particlesCount; i++) {
-                // Pick a random triangle
-                // Octahedron has 8 faces, Icosahedron has 20.
-                // The geometry is indexed or non-indexed. Basic geometries are usually non-indexed triangles in Three.js buffer geometry if not specified? 
-                // Actually OctahedronGeometry(radius, detail) creates a BufferGeometry.
-                // Let's assume it's a triangle soup or we can just pick 3 random vertices that form a face?
-                // Too complex to calculate faces manually without access to index.
-
-                // Alternative: Just generate points on a sphere and snap them? No.
-
-                // Let's just use the vertices we have and scatter points around them? 
-                // No, that looks like dots.
-
-                // Let's use a mathematical approach for Octahedron: |x| + |y| + |z| = r
                 if (type === 'octahedron') {
-                    // Rejection sampling for Octahedron volume
-                    // |x| + |y| + |z| <= r
                     let x, y, z;
                     const r = 10;
                     while (true) {
@@ -132,28 +143,23 @@ const PointCloud = () => {
                         z = (Math.random() - 0.5) * 2 * r;
                         if (Math.abs(x) + Math.abs(y) + Math.abs(z) <= r) break;
                     }
-                    // For surface only: normalize to L1 norm?
-                    // To make it look like a wireframe or surface, let's push it to the boundary.
-                    // But volume looks cool too. Let's do surface.
                     const norm = Math.abs(x) + Math.abs(y) + Math.abs(z);
                     const scale = r / norm;
                     positions[i * 3] = x * scale;
                     positions[i * 3 + 1] = y * scale;
                     positions[i * 3 + 2] = z * scale;
-                } else {
-                    // Icosahedron is harder to do analytically.
-                    // Let's just use a sphere but with a different visual style?
-                    // Or actually, let's use the Geometry class if possible? No, deprecated.
-                    // Let's use the BufferGeometry we created.
 
-                    // Random point on triangle approach.
-                    // We can access the raw position array.
+                    const mixedColor = color1.clone().lerp(color2, Math.abs(y) / 10);
+                    colors[i * 3] = mixedColor.r;
+                    colors[i * 3 + 1] = mixedColor.g;
+                    colors[i * 3 + 2] = mixedColor.b;
+
+                } else {
                     const faceIndex = Math.floor(Math.random() * (vertexCount / 3));
                     const vA = new THREE.Vector3().fromBufferAttribute(posAttribute, faceIndex * 3 + 0);
                     const vB = new THREE.Vector3().fromBufferAttribute(posAttribute, faceIndex * 3 + 1);
                     const vC = new THREE.Vector3().fromBufferAttribute(posAttribute, faceIndex * 3 + 2);
 
-                    // Random point in triangle
                     let r1 = Math.random();
                     let r2 = Math.random();
                     if (r1 + r2 > 1) {
@@ -169,7 +175,13 @@ const PointCloud = () => {
                     positions[i * 3] = p.x;
                     positions[i * 3 + 1] = p.y;
                     positions[i * 3 + 2] = p.z;
+
+                    const mixedColor = color2.clone().lerp(color3, Math.abs(p.x) / 10);
+                    colors[i * 3] = mixedColor.r;
+                    colors[i * 3 + 1] = mixedColor.g;
+                    colors[i * 3 + 2] = mixedColor.b;
                 }
+                sizes[i] = Math.random() * 0.5 + 0.1;
             }
             geometry.dispose();
         };
@@ -184,24 +196,22 @@ const PointCloud = () => {
             generatePolyhedron('icosahedron');
         }
 
-        return positions;
+        return { positions, colors, sizes };
     }, [shape]);
 
     useFrame((_state, _delta) => {
         const { rotation, scale, position } = useGestureStore.getState();
 
         if (pointsRef.current) {
-            // Smooth interpolation
             pointsRef.current.rotation.x = THREE.MathUtils.lerp(pointsRef.current.rotation.x, rotation.x, 0.1);
             pointsRef.current.rotation.y = THREE.MathUtils.lerp(pointsRef.current.rotation.y, rotation.y, 0.1);
-
             pointsRef.current.scale.setScalar(THREE.MathUtils.lerp(pointsRef.current.scale.x, scale, 0.1));
-
             pointsRef.current.position.lerp(new THREE.Vector3(position.x, position.y, position.z), 0.1);
-
-
         }
     });
+
+    const uniforms = useMemo(() => ({
+    }), []);
 
     return (
         <points ref={pointsRef}>
@@ -213,14 +223,28 @@ const PointCloud = () => {
                     itemSize={3}
                     args={[positions, 3]}
                 />
+                <bufferAttribute
+                    attach="attributes-color"
+                    count={colors.length / 3}
+                    array={colors}
+                    itemSize={3}
+                    args={[colors, 3]}
+                />
+                <bufferAttribute
+                    attach="attributes-size"
+                    count={sizes.length}
+                    array={sizes}
+                    itemSize={1}
+                    args={[sizes, 1]}
+                />
             </bufferGeometry>
-            <pointsMaterial
-                size={0.15}
-                color="#00ffff"
-                sizeAttenuation={true}
+            <shaderMaterial
+                vertexShader={vertexShader}
+                fragmentShader={fragmentShader}
                 transparent={true}
-                opacity={0.8}
+                depthWrite={false}
                 blending={THREE.AdditiveBlending}
+                uniforms={uniforms}
             />
         </points>
     );
