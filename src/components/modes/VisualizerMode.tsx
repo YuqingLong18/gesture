@@ -1,7 +1,7 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGestureStore } from '../store';
+import { useGestureStore } from '../../store';
 
 const vertexShader = `
   attribute float size;
@@ -29,7 +29,7 @@ const fragmentShader = `
   }
 `;
 
-const PointCloud = () => {
+const VisualizerMode = () => {
     const pointsRef = useRef<THREE.Points>(null);
 
     const particlesCount = 30000;
@@ -250,4 +250,4 @@ const PointCloud = () => {
     );
 };
 
-export default PointCloud;
+export default VisualizerMode;

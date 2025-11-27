@@ -3,6 +3,7 @@ import HandTracker from './components/HandTracker';
 import UIOverlay from './components/UIOverlay';
 
 import OptionPanel from './components/OptionPanel';
+import ModeSelector from './components/ModeSelector';
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
       <Scene />
       <UIOverlay />
       <OptionPanel />
+      <ModeSelector />
     </div>
   );
 }
